@@ -8,7 +8,11 @@ from fairseq.criterions.sentence_prediction import SentencePredictionCriterion
 
 from go_annotation.ontology import Ontology
 
-ont = Ontology()
+# TODO add an option to load the correct ontology file
+inputs_dir = "/ccs/home/jlaw/projects/deepgreen/fairseq-uniparc-fork/inputs/cafa/"
+obo_file = f"{inputs_dir}/go_cafa3.obo.gz"
+restrict_terms_file = f"{inputs_dir}/cafa3_terms.txt.gz"
+ont = Ontology(obo_file=obo_file, restrict_terms_file=restrict_terms_file)
 
 logger = logging.getLogger(__name__)
 
