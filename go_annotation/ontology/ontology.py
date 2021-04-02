@@ -8,6 +8,12 @@ import numpy as np
 import pandas as pd
 from scipy.sparse import coo_matrix, csr_matrix
 
+head_nodes = {
+    "biological_process": "GO:0008150", 
+    "molecular_function": "GO:0003674",
+    "cellular_component": "GO:0005575",
+}
+
 
 def parse_group(group):
     out = {}
@@ -71,8 +77,8 @@ class Ontology:
             self.terms = pd.read_csv(restrict_terms_file, header=None)[0]
         # make sure we include all of the ancestors of these terms?
         anc_terms = self.get_ancestors(self.terms)
-        if len(anc_terms) != self.terms:
-            print(f"WARNING: {len(anc_terms) - len(self.terms)} ancestral terms were not included in file")
+        if len(anc_terms) != len(self.terms):
+            print(f"WARNING: {len(anc_terms) - len(self.terms)} ancestral terms were not included in restrict_terms_file")
 
         self.term_index = {term: i for i, term in enumerate(self.terms)}
         terms = set(self.terms)
@@ -124,8 +130,10 @@ class Ontology:
     def terms_to_indices(self, terms):
         """ Return a sorted list of indices for the given terms, omitting
         those less common than the threshold """
-        return sorted([self.G.nodes[term]['index'] for term in terms if
-                       self.G.nodes[term]['index'] is not None])
+        #return sorted([self.G.nodes[term]['index'] for term in terms if
+        #               self.G.nodes[term]['index'] is not None])
+        return sorted([self.term_index[term] for term in terms if
+            term in self.term_index])
 
     def get_ancestors(self, terms):
         """ Includes the query terms themselves """
@@ -167,8 +175,10 @@ class Ontology:
         return self._ancestor_array
 
     def get_head_node_indices(self):
-        return self.terms_to_indices([node for node, degree
-                                      in self.G.in_degree if degree == 0])
+        head_nodes = [node for node, degree 
+                in self.G.in_degree if degree == 0]
+        return self.terms_to_indices(head_nodes)
+                                      
 
 # notes, use nx.shortest_path_length(G, root) to find depth? score accuracy by tree depth?
 

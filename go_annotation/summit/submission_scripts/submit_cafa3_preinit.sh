@@ -37,20 +37,22 @@ NUM_CLASSES=28474        # Number of GO terms in CAFA3
 
 SAVE_DIR=$MEMBERWORK/bie108/fairseq-uniparc/$LSB_JOBNAME
 #DATA_DIR=/gpfs/alpine/bie108/proj-shared/swissprot_go_annotation/fairseq_cafa3
+# This directory contains the annotations & ontology directly from cafa3 
 DATA_DIR=/ccs/proj/bie108/jlaw/swissprot_go_annotation/fairseq_cafa3
 ROBERTA_PATH=$MEMBERWORK/bie108/fairseq-uniparc/roberta_base_checkpoint/checkpoint_best.pt
 
 jsrun -n ${nnodes} -a 1 -c 42 -r 1 cp -r ${DATA_DIR} /mnt/bb/${USER}/data
 
-jsrun -n ${nnodes} -g 6 -c 42 -r1 -a1 -b none \
+jsrun -n ${nnodes} -g 6 -c 42 -r 1 -a 1 -b none \
     fairseq-train --distributed-port 23456 \
-    --fp16 /mnt/bb/${USER}/data \
+    /mnt/bb/${USER}/data \
+    --fp16 \
     --user-dir $HOME/projects/deepgreen/fairseq-uniparc-fork/go_annotation/ \
     --restore-file $ROBERTA_PATH \
     --classification-head-name='go_prediction' \
     --task sentence_labeling --criterion go_prediction --regression-target --num-classes $NUM_CLASSES --init-token 0 \
-    --arch roberta_base --max-positions $TOKENS_PER_SAMPLE --shorten-method='random_crop' \
-    --optimizer adam --adam-betas '(0.9,0.98)' --adam-eps 1e-6 --clip-norm 0.0 \
+    --arch roberta_base --max-positions $TOKENS_PER_SAMPLE --shorten-method=random_crop \
+    --optimizer=adam --adam-betas=(0.9,0.98) --adam-eps=1e-6 --clip-norm=0.0 \
     --lr-scheduler polynomial_decay --lr $PEAK_LR --warmup-updates $WARMUP_UPDATES --total-num-update $TOTAL_UPDATES \
     --dropout 0.1 --attention-dropout 0.1 --weight-decay 0.01 \
     --validate-interval-updates 500 \

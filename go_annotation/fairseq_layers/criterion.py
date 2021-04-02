@@ -2,6 +2,7 @@ import logging
 
 import torch
 import torch.nn.functional as F
+from torch.cuda.amp import autocast
 from fairseq import metrics
 from fairseq.criterions import register_criterion
 from fairseq.criterions.sentence_prediction import SentencePredictionCriterion
@@ -26,10 +27,12 @@ class GOPredictionCriterion(SentencePredictionCriterion):
         self._ancestor_array = ont.ancestor_array()
         head_nodes = ont.get_head_node_indices()
         self._ont_indicies = {
-            'bp': ont.terms_to_indices(ont.get_descendants(ont.term_index[head_nodes[0]])),
-            'mf': ont.terms_to_indices(ont.get_descendants(ont.term_index[head_nodes[1]])),
-            'cc': ont.terms_to_indices(ont.get_descendants(ont.term_index[head_nodes[2]]))}
+            'bp': ont.terms_to_indices(ont.get_descendants(ont.terms[head_nodes[0]])),
+            'mf': ont.terms_to_indices(ont.get_descendants(ont.terms[head_nodes[1]])),
+            'cc': ont.terms_to_indices(ont.get_descendants(ont.terms[head_nodes[2]]))}
 
+    # Used to enable mixed precision (see https://pytorch.org/docs/master/amp.html#torch.cuda.amp.autocast)
+    @autocast()
     def forward(self, model, sample, reduce=True):
         assert (
                 hasattr(model, "classification_heads")
@@ -58,6 +61,8 @@ class GOPredictionCriterion(SentencePredictionCriterion):
         normed_logits = torch.gather(padded_logits, 1, index_tensor)
         normed_logits, _ = torch.min(normed_logits, -1)
 
+        targets = targets.type_as(normed_logits)
+        #normed_logits = normed_logits.type_as(targets)
         loss = F.binary_cross_entropy_with_logits(normed_logits, targets, reduction="sum")
 
         logging_output = {
