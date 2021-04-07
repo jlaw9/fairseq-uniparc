@@ -9,3 +9,8 @@ I'm using [torch_scatter](https://github.com/rusty1s/pytorch_scatter), which doe
 Then, install my fork of fairseq from [pstjohn/fairseq](https://github.com/pstjohn/fairseq) with `pip install --editable ./` in the resulting conda environment. 
 
 On eagle, my environment is kept in `/projects/deepgreen/pstjohn/envs/fairseq`. Use `--prefix=...` during `conda env create` to specify a custom directory.
+
+
+## Run the CAFA evaluation
+### Prerequisites
+`pip install "biopython==1.76"`
