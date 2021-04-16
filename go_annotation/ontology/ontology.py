@@ -75,7 +75,7 @@ class Ontology:
         else:
             #term_file = os.path.join(dir_path, 'terms.csv.gz')
             self.terms = pd.read_csv(restrict_terms_file, header=None)[0]
-        # make sure we include all of the ancestors of these terms?
+        # make sure we include all of the ancestors of these terms
         anc_terms = self.get_ancestors(self.terms)
         if len(anc_terms) != len(self.terms):
             print(f"WARNING: {len(anc_terms) - len(self.terms)} ancestral terms were not included in restrict_terms_file")
@@ -215,15 +215,30 @@ def read_ann_list_file(ann_list_file, ont_obj, **kwargs):
     return df, leaf_ann_mat
 
 
-def build_ann_matrix(df, ont_obj):
-    prots = sorted(df['prot'].unique())
+def build_ann_matrix(df, ont_obj, prots=None):
+    """ Convert a dataframe with 'prot' and 'term' columns into a sparse matrix 
+    with rows as the proteins, and columns as the terms.
+    :param prots: list of proteins to use as the row indexes
+    """
+    if prots is None:
+        prots = sorted(df['prot'].unique())
     prot_index = {prot: i for i, prot in enumerate(prots)}
     p_idx_list = []
     t_idx_list = []
+    terms_missed = []
     for (i, prot, term) in df[['prot', 'term']].itertuples():
+        # for cafa3, the test data has some terms not seen in the training data
+        if term not in ont_obj.term_index:
+            terms_missed.append(term)
+            continue
         p_idx_list.append(prot_index[prot])
         t_idx_list.append(ont_obj.term_index[term])
-    leaf_ann_mat = coo_matrix((np.ones(len(df)), (p_idx_list, t_idx_list))).tocsr()
+    leaf_ann_mat = coo_matrix(
+            (np.ones(len(p_idx_list)), (p_idx_list, t_idx_list)), 
+            shape=(len(prots), len(ont_obj.terms)),
+            ).tocsr()
+    if len(terms_missed) != 0:
+        print(f"\t{len(terms_missed)} annotations missed ({len(set(terms_missed))}) terms")
     return prots, leaf_ann_mat
 
 
@@ -269,111 +284,111 @@ class Sparse_Annotations:
         # used to map from node/prot to the index and vice versa
         self.node2idx = {n: i for i, n in enumerate(prots)}
 
-    def reshape_to_prots(self, new_prots):
-        """ *new_prots*: list of prots to which the cols should be changed (for example, to align to a network)
-        """
-        print("\treshaping %d prots to %d prots (%d in common)" % (
-            len(self.prots), len(new_prots), len(set(self.prots) & set(new_prots))))
-        # reshape the matrix cols to the new prots
-        # put the prots on the rows to make the switch
-        new_ann_mat = sp.lil_matrix((len(new_prots), self.ann_matrix.shape[0]))
-        ann_matrix = self.ann_matrix.T.tocsr()
-        for i, p in enumerate(new_prots):
-            idx = self.node2idx.get(p)
-            if idx is not None:
-                new_ann_mat[i] = ann_matrix[idx]
-        # now transpose back to term rows and prot cols
-        self.ann_matrix = new_ann_mat.tocsc().T.tocsr()
-        self.prots = new_prots
-        # reset the index mapping
-        self.node2idx = {n: i for i, n in enumerate(self.prots)}
-
-    def limit_to_terms(self, terms_list):
-        """ *terms_list*: list of terms. Data from rows not in this list of terms will be removed
-        """
-        terms_idx = [self.term2idx[t] for t in terms_list if t in self.term2idx]
-        print("\tlimiting data in annotation matrix from %d terms to %d" % (len(self.terms), len(terms_idx)))
-        num_pos = len((self.ann_matrix > 0).astype(int).data)
-        terms = np.zeros(len(self.terms))
-        terms[terms_idx] = 1
-        diag = sp.diags(terms)
-        self.ann_matrix = diag.dot(self.ann_matrix)
-        print("\t%d pos annotations reduced to %d" % (
-            num_pos, len((self.ann_matrix > 0).astype(int).data)))
-
-    def reshape_to_terms(self, terms_list, dag_mat):
-        """ 
-        *terms_list*: ordered list of terms to which the rows should be changed (e.g., COMP aligned with EXPC)
-        *dag_mat*: new dag matrix. Required since the terms list could contain terms which are not in this DAG
-        """
-        assert len(terms_list) == dag_mat.shape[0], \
-            "ERROR: # terms given to reshape != the shape of the given dag matrix"
-        if len(terms_list) < len(self.terms):
-            # remove the extra data first to speed up indexing
-            self.limit_to_terms(terms_list)
-        # now move each row to the correct position in the new matrix
-        new_ann_mat = sp.lil_matrix((len(terms_list), len(self.prots)))
-        #terms_idx = [self.term2idx[t] for t in terms_list if t in self.term2idx]
-        for idx, term in enumerate(terms_list):
-            idx2 = self.term2idx.get(term)
-            if idx2 is None:
-                continue
-            new_ann_mat[idx] = self.ann_matrix[idx2]
-            #new_dag_mat[idx] = self.dag_matrix[idx2][:,terms_idx]
-        self.ann_matrix = new_ann_mat.tocsr()
-        self.dag_matrix = dag_mat.tocsr()
-        self.terms = terms_list
-        self.term2idx = {g: i for i, g in enumerate(self.terms)}
-
-    def limit_to_prots(self, prots):
-        """ *prots*: array with 1s at selected prots, 0s at other indices
-        """
-        diag = sp.diags(prots)
-        self.ann_matrix = self.ann_matrix.dot(diag)
-
-
-def create_sparse_ann_file(
-        obo_file, ann_file, 
-        forced=False, verbose=False, **kwargs):
-    """
-    Store/load the DAG, annotation matrix, terms and prots. 
-    The DAG and annotation matrix will be aligned, and the prots will not be limitted to a network since the network can change.
-    The DAG should be the same DAG that was used to generate the pos_neg_file
-    *returns*:
-        1) dag_matrix: A term by term matrix with the child -> parent relationships
-        2) ann_matrix: A matrix with term rows, protein/node columns, and 1 for annotations
-        3) terms: row labels
-        4) prots: column labels
-    """
-    sparse_ann_file = ann_file + '.npz'
-
-    if forced or not os.path.isfile(sparse_ann_file):
-        # load the pos_neg_file first. Should have only one hierarchy (e.g., BP)
-        ann_matrix, terms, prots = setup_sparse_annotations(ann_file)
-
-        # now read the term hierarchy DAG
-        # parse the dags first as it also sets up the term_to_category dictionary
-        dag_matrix, dag_terms = setup_obo_dag_matrix(obo_file, terms)
-        dag_terms2idx = {g: i for i, g in enumerate(dag_terms)}
-
-        print("\twriting sparse annotations to %s" % (sparse_ann_file))
-        # store all the data in the same file
-        dag_matrix_data = get_csr_components(dag_matrix)
-        ann_matrix_data = get_csr_components(ann_matrix)
-        np.savez_compressed(
-            sparse_ann_file, dag_matrix_data, 
-            ann_matrix_data, terms, prots)
-    else:
-        print("\nReading annotation matrix from %s" % (sparse_ann_file))
-        loaded_data = np.load(sparse_ann_file, allow_pickle=True)
-        dag_matrix = make_csr_from_components(loaded_data['arr_0'])
-        ann_matrix = make_csr_from_components(loaded_data['arr_1'])
-        terms, prots = loaded_data['arr_2'], loaded_data['arr_3']
-        #dag_matrix = make_csr_from_components(loaded_data['dag_matrix_data'])
-        #ann_matrix = make_csr_from_components(loaded_data['ann_matrix_data'])
-        #terms, prots = loaded_data['terms'], loaded_data['prots']
-
-    return dag_matrix, ann_matrix, terms, prots
+#    def reshape_to_prots(self, new_prots):
+#        """ *new_prots*: list of prots to which the cols should be changed (for example, to align to a network)
+#        """
+#        print("\treshaping %d prots to %d prots (%d in common)" % (
+#            len(self.prots), len(new_prots), len(set(self.prots) & set(new_prots))))
+#        # reshape the matrix cols to the new prots
+#        # put the prots on the rows to make the switch
+#        new_ann_mat = sp.lil_matrix((len(new_prots), self.ann_matrix.shape[0]))
+#        ann_matrix = self.ann_matrix.T.tocsr()
+#        for i, p in enumerate(new_prots):
+#            idx = self.node2idx.get(p)
+#            if idx is not None:
+#                new_ann_mat[i] = ann_matrix[idx]
+#        # now transpose back to term rows and prot cols
+#        self.ann_matrix = new_ann_mat.tocsc().T.tocsr()
+#        self.prots = new_prots
+#        # reset the index mapping
+#        self.node2idx = {n: i for i, n in enumerate(self.prots)}
+#
+#    def limit_to_terms(self, terms_list):
+#        """ *terms_list*: list of terms. Data from rows not in this list of terms will be removed
+#        """
+#        terms_idx = [self.term2idx[t] for t in terms_list if t in self.term2idx]
+#        print("\tlimiting data in annotation matrix from %d terms to %d" % (len(self.terms), len(terms_idx)))
+#        num_pos = len((self.ann_matrix > 0).astype(int).data)
+#        terms = np.zeros(len(self.terms))
+#        terms[terms_idx] = 1
+#        diag = sp.diags(terms)
+#        self.ann_matrix = diag.dot(self.ann_matrix)
+#        print("\t%d pos annotations reduced to %d" % (
+#            num_pos, len((self.ann_matrix > 0).astype(int).data)))
+#
+#    def reshape_to_terms(self, terms_list, dag_mat):
+#        """ 
+#        *terms_list*: ordered list of terms to which the rows should be changed (e.g., COMP aligned with EXPC)
+#        *dag_mat*: new dag matrix. Required since the terms list could contain terms which are not in this DAG
+#        """
+#        assert len(terms_list) == dag_mat.shape[0], \
+#            "ERROR: # terms given to reshape != the shape of the given dag matrix"
+#        if len(terms_list) < len(self.terms):
+#            # remove the extra data first to speed up indexing
+#            self.limit_to_terms(terms_list)
+#        # now move each row to the correct position in the new matrix
+#        new_ann_mat = sp.lil_matrix((len(terms_list), len(self.prots)))
+#        #terms_idx = [self.term2idx[t] for t in terms_list if t in self.term2idx]
+#        for idx, term in enumerate(terms_list):
+#            idx2 = self.term2idx.get(term)
+#            if idx2 is None:
+#                continue
+#            new_ann_mat[idx] = self.ann_matrix[idx2]
+#            #new_dag_mat[idx] = self.dag_matrix[idx2][:,terms_idx]
+#        self.ann_matrix = new_ann_mat.tocsr()
+#        self.dag_matrix = dag_mat.tocsr()
+#        self.terms = terms_list
+#        self.term2idx = {g: i for i, g in enumerate(self.terms)}
+#
+#    def limit_to_prots(self, prots):
+#        """ *prots*: array with 1s at selected prots, 0s at other indices
+#        """
+#        diag = sp.diags(prots)
+#        self.ann_matrix = self.ann_matrix.dot(diag)
+#
+#
+#def create_sparse_ann_file(
+#        obo_file, ann_file, 
+#        forced=False, verbose=False, **kwargs):
+#    """
+#    Store/load the DAG, annotation matrix, terms and prots. 
+#    The DAG and annotation matrix will be aligned, and the prots will not be limitted to a network since the network can change.
+#    The DAG should be the same DAG that was used to generate the pos_neg_file
+#    *returns*:
+#        1) dag_matrix: A term by term matrix with the child -> parent relationships
+#        2) ann_matrix: A matrix with term rows, protein/node columns, and 1 for annotations
+#        3) terms: row labels
+#        4) prots: column labels
+#    """
+#    sparse_ann_file = ann_file + '.npz'
+#
+#    if forced or not os.path.isfile(sparse_ann_file):
+#        # load the pos_neg_file first. Should have only one hierarchy (e.g., BP)
+#        ann_matrix, terms, prots = setup_sparse_annotations(ann_file)
+#
+#        # now read the term hierarchy DAG
+#        # parse the dags first as it also sets up the term_to_category dictionary
+#        dag_matrix, dag_terms = setup_obo_dag_matrix(obo_file, terms)
+#        dag_terms2idx = {g: i for i, g in enumerate(dag_terms)}
+#
+#        print("\twriting sparse annotations to %s" % (sparse_ann_file))
+#        # store all the data in the same file
+#        dag_matrix_data = get_csr_components(dag_matrix)
+#        ann_matrix_data = get_csr_components(ann_matrix)
+#        np.savez_compressed(
+#            sparse_ann_file, dag_matrix_data, 
+#            ann_matrix_data, terms, prots)
+#    else:
+#        print("\nReading annotation matrix from %s" % (sparse_ann_file))
+#        loaded_data = np.load(sparse_ann_file, allow_pickle=True)
+#        dag_matrix = make_csr_from_components(loaded_data['arr_0'])
+#        ann_matrix = make_csr_from_components(loaded_data['arr_1'])
+#        terms, prots = loaded_data['arr_2'], loaded_data['arr_3']
+#        #dag_matrix = make_csr_from_components(loaded_data['dag_matrix_data'])
+#        #ann_matrix = make_csr_from_components(loaded_data['ann_matrix_data'])
+#        #terms, prots = loaded_data['terms'], loaded_data['prots']
+#
+#    return dag_matrix, ann_matrix, terms, prots
 
 
 ## small utility functions for working with the pieces of
