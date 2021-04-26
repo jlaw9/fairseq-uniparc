@@ -9,12 +9,6 @@ from fairseq.criterions.sentence_prediction import SentencePredictionCriterion
 
 from go_annotation.ontology import Ontology
 
-# TODO add an option to load the correct ontology file
-inputs_dir = "/ccs/home/jlaw/projects/deepgreen/fairseq-uniparc-fork/inputs/cafa/"
-obo_file = f"{inputs_dir}/go_cafa3.obo.gz"
-restrict_terms_file = f"{inputs_dir}/cafa3_terms.txt.gz"
-ont = Ontology(obo_file=obo_file, restrict_terms_file=restrict_terms_file)
-
 logger = logging.getLogger(__name__)
 
 
@@ -23,6 +17,11 @@ class GOPredictionCriterion(SentencePredictionCriterion):
 
     def __init__(self, task, classification_head_name, regression_target):
         super(GOPredictionCriterion, self).__init__(task, classification_head_name, regression_target)
+
+        ont = Ontology(
+                obo_file=task.args.obo_file, 
+                restrict_terms_file=task.args.restrict_terms_file)
+        self.ont = ont
 
         self._ancestor_array = ont.ancestor_array()
         head_nodes = ont.get_head_node_indices()
@@ -45,8 +44,8 @@ class GOPredictionCriterion(SentencePredictionCriterion):
             classification_head_name=self.classification_head_name,
         )
 
-        assert logits.shape[1] == ont.total_nodes, \
-            f"classification head must match ontology nodes, {ont.total_nodes}"
+        assert logits.shape[1] == self.ont.total_nodes, \
+            f"classification head must match ontology nodes, {self.ont.total_nodes}"
 
         targets = model.get_targets(sample, [logits])
         sample_size = targets.shape[0]

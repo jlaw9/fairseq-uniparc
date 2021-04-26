@@ -74,6 +74,7 @@ class Ontology:
             self.terms = sorted(set(self.G.nodes))
         else:
             #term_file = os.path.join(dir_path, 'terms.csv.gz')
+            print(f"\tReading restrict_terms_file: {restrict_terms_file}")
             self.terms = pd.read_csv(restrict_terms_file, header=None)[0]
         # make sure we include all of the ancestors of these terms
         anc_terms = self.get_ancestors(self.terms)

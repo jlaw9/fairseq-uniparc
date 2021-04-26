@@ -22,6 +22,21 @@ logger = logging.getLogger(__name__)
 @register_task("sentence_labeling")
 class SentenceLabelingTask(SentencePredictionTask):
 
+    @staticmethod
+    def add_args(parser):
+        """Add GO-specific arguments to the parser."""
+        SentencePredictionTask.add_args(parser)
+        parser.add_argument(
+                "--obo-file",
+                help="Gene Ontology obo file. " +
+                "Must match the annotations used to build the train/test dataset",
+                )
+        parser.add_argument(
+                "--restrict-terms-file",
+                help="File containing a list of terms " +
+                "to which the GO DAG should be limited",
+                )
+
     @classmethod
     def setup_task(cls, args, **kwargs):
         assert args.num_classes > 0, "Must set --num-classes"

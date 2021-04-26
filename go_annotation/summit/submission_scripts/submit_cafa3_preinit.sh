@@ -4,7 +4,7 @@
 #BSUB -q batch-hm
 #BSUB -W 12:00
 #BSUB -nnodes 1
-#BSUB -J 20210326_cafa3_preinit
+#BSUB -J fairseq_cafa3_run2
 #BSUB -o /ccs/home/jlaw/fairseq-job-output/%J.out
 #BSUB -e /ccs/home/jlaw/fairseq-job-output/%J.err
 #BSUB -alloc_flags NVME
@@ -33,13 +33,17 @@ MAX_POSITIONS=1024       # Num. positional embeddings (usually same as above)
 MAX_SENTENCES=8          # Number of sequences per batch (batch size)
 UPDATE_FREQ=2            # Increase the batch size 2x
 
-NUM_CLASSES=28474        # Number of GO terms in CAFA3
-
 SAVE_DIR=$MEMBERWORK/bie108/fairseq-uniparc/$LSB_JOBNAME
 #DATA_DIR=/gpfs/alpine/bie108/proj-shared/swissprot_go_annotation/fairseq_cafa3
 # This directory contains the annotations & ontology directly from cafa3 
-DATA_DIR=/ccs/proj/bie108/jlaw/swissprot_go_annotation/fairseq_cafa3
+DATA_DIR=/ccs/proj/bie108/jlaw/swissprot_go_annotation/fairseq_cafa3_run2
 ROBERTA_PATH=$MEMBERWORK/bie108/fairseq-uniparc/roberta_base_checkpoint/checkpoint_best.pt
+
+BASE_DIR="$(readlink -e ../../../)"
+OBO_FILE="$BASE_DIR/inputs/cafa/go_cafa3.obo.gz"
+RESTRICT_TERMS_FILE="$BASE_DIR/inputs/cafa/cafa3_terms.txt.gz"
+# Number of GO terms
+NUM_CLASSES="$(gzip -cd $RESTRICT_TERMS_FILE | wc -l)"
 
 jsrun -n ${nnodes} -a 1 -c 42 -r 1 cp -r ${DATA_DIR} /mnt/bb/${USER}/data
 
@@ -52,7 +56,7 @@ jsrun -n ${nnodes} -g 6 -c 42 -r 1 -a 1 -b none \
     --classification-head-name='go_prediction' \
     --task sentence_labeling --criterion go_prediction --regression-target --num-classes $NUM_CLASSES --init-token 0 \
     --arch roberta_base --max-positions $TOKENS_PER_SAMPLE --shorten-method=random_crop \
-    --optimizer=adam --adam-betas=(0.9,0.98) --adam-eps=1e-6 --clip-norm=0.0 \
+    --optimizer=adam --adam-betas="(0.9,0.98)" --adam-eps=1e-6 --clip-norm=0.0 \
     --lr-scheduler polynomial_decay --lr $PEAK_LR --warmup-updates $WARMUP_UPDATES --total-num-update $TOTAL_UPDATES \
     --dropout 0.1 --attention-dropout 0.1 --weight-decay 0.01 \
     --validate-interval-updates 500 \
