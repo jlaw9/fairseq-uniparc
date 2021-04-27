@@ -15,52 +15,12 @@ class ESMModel(RobertaModel):
     @staticmethod
     def add_args(parser):
         """Add model-specific arguments to the parser."""
+        # Add the Roberta Model arguments
+        RobertaModel.add_args(parser)
+
+        # Add the esm-specific parameters
         parser.add_argument(
             "--esm-architecture", type=str, help="ESM pretrained architecture"
-        )
-        parser.add_argument(
-            "--max-positions", type=int, help="number of positional embeddings to learn"
-        )
-
-        parser.add_argument(
-            "--pooler-activation-fn",
-            choices=utils.get_available_activation_fns(),
-            help="activation function to use for pooler layer",
-        )
-        parser.add_argument(
-            "--pooler-dropout",
-            type=float,
-            metavar="D",
-            help="dropout probability in the masked_lm pooler layers",
-        )
-        # args for Training with Quantization Noise for Extreme Model Compression ({Fan*, Stock*} et al., 2020)
-        parser.add_argument(
-            "--quant-noise-pq",
-            type=float,
-            metavar="D",
-            default=0,
-            help="iterative PQ quantization noise at training time",
-        )
-        parser.add_argument(
-            "--quant-noise-pq-block-size",
-            type=int,
-            metavar="D",
-            default=8,
-            help="block size of quantization noise at training time",
-        )
-        parser.add_argument(
-            "--quant-noise-scalar",
-            type=float,
-            metavar="D",
-            default=0,
-            help="scalar quantization noise and scalar quantization at training time",
-        )
-        # args for "Better Fine-Tuning by Reducing Representational Collapse" (Aghajanyan et al. 2020)
-        parser.add_argument(
-            "--spectral-norm-classification-head",
-            action="store_true",
-            default=False,
-            help="Apply spectral normalization on the classification head",
         )
 
     @classmethod
