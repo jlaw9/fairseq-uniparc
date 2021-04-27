@@ -68,6 +68,9 @@ class ESMModel(RobertaModel):
 
         print(args.esm_architecture)
         model, alphabet = torch.hub.load("facebookresearch/esm", args.esm_architecture)  # fix
+        # Models are set to "eval" mode by default after loading from torch hub.
+        # This changes the model to "train" mode so we can fine-tune the weights
+        model.train()
         dictionary = alphabet_to_dictionary(alphabet)
         encoder = ESMEncoder(model, dictionary)
         assert args.max_positions == model.args.max_positions
