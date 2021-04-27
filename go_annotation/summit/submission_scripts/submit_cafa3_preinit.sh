@@ -4,16 +4,22 @@
 #BSUB -q batch-hm
 #BSUB -W 12:00
 #BSUB -nnodes 1
-#BSUB -J 20200103_cafa3_preinit
-#BSUB -o /ccs/home/pstjohn/fairseq_job_output/%J.out
-#BSUB -e /ccs/home/pstjohn/fairseq_job_output/%J.err
+#BSUB -J fairseq_cafa3_run2
+#BSUB -o /ccs/home/jlaw/fairseq-job-output/%J.out
+#BSUB -e /ccs/home/jlaw/fairseq-job-output/%J.err
 #BSUB -alloc_flags NVME
 #BSUB -B
 
 nnodes=$(cat ${LSB_DJOB_HOSTFILE} | sort | uniq | grep -v login | grep -v batch | wc -l)
 
-module load ibm-wml-ce/1.7.1.a0-0
-conda activate fairseq_1.7.1
+#module load ibm-wml-ce/1.7.1.a0-0
+#conda activate /ccs/proj/bie108/jlaw/envs/fairseq_1.7.1
+# had to use this series of module loads:
+module purge
+module load gcc
+module load spectrum-mpi
+module load open-ce #
+conda activate fairseq-open-ce
 
 # export NCCL_DEBUG=INFO
 export OMP_NUM_THREADS=4
@@ -28,20 +34,29 @@ MAX_SENTENCES=8          # Number of sequences per batch (batch size)
 UPDATE_FREQ=2            # Increase the batch size 2x
 
 SAVE_DIR=$MEMBERWORK/bie108/fairseq-uniparc/$LSB_JOBNAME
-DATA_DIR=/gpfs/alpine/bie108/proj-shared/swissprot_go_annotation/fairseq_cafa3
+#DATA_DIR=/gpfs/alpine/bie108/proj-shared/swissprot_go_annotation/fairseq_cafa3
+# This directory contains the annotations & ontology directly from cafa3 
+DATA_DIR=/ccs/proj/bie108/jlaw/swissprot_go_annotation/fairseq_cafa3_run2
 ROBERTA_PATH=$MEMBERWORK/bie108/fairseq-uniparc/roberta_base_checkpoint/checkpoint_best.pt
+
+BASE_DIR="$(readlink -e ../../../)"
+OBO_FILE="$BASE_DIR/inputs/cafa/go_cafa3.obo.gz"
+RESTRICT_TERMS_FILE="$BASE_DIR/inputs/cafa/cafa3_terms.txt.gz"
+# Number of GO terms
+NUM_CLASSES="$(gzip -cd $RESTRICT_TERMS_FILE | wc -l)"
 
 jsrun -n ${nnodes} -a 1 -c 42 -r 1 cp -r ${DATA_DIR} /mnt/bb/${USER}/data
 
-jsrun -n ${nnodes} -g 6 -c 42 -r1 -a1 -b none \
+jsrun -n ${nnodes} -g 6 -c 42 -r 1 -a 1 -b none \
     fairseq-train --distributed-port 23456 \
-    --fp16 /mnt/bb/pstjohn/data \
-    --user-dir $HOME/fairseq-uniparc/go_annotation/ \
+    /mnt/bb/${USER}/data \
+    --fp16 \
+    --user-dir $HOME/projects/deepgreen/fairseq-uniparc-fork/go_annotation/ \
     --restore-file $ROBERTA_PATH \
     --classification-head-name='go_prediction' \
-    --task sentence_labeling --criterion go_prediction --regression-target --num-classes 32012 \
-    --arch roberta_base --max-positions $TOKENS_PER_SAMPLE --shorten-method='random_crop' \
-    --optimizer adam --adam-betas '(0.9,0.98)' --adam-eps 1e-6 --clip-norm 0.0 \
+    --task sentence_labeling --criterion go_prediction --regression-target --num-classes $NUM_CLASSES --init-token 0 \
+    --arch roberta_base --max-positions $TOKENS_PER_SAMPLE --shorten-method=random_crop \
+    --optimizer=adam --adam-betas="(0.9,0.98)" --adam-eps=1e-6 --clip-norm=0.0 \
     --lr-scheduler polynomial_decay --lr $PEAK_LR --warmup-updates $WARMUP_UPDATES --total-num-update $TOTAL_UPDATES \
     --dropout 0.1 --attention-dropout 0.1 --weight-decay 0.01 \
     --validate-interval-updates 500 \
