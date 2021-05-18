@@ -52,7 +52,7 @@ jsrun -n ${nnodes} -a 1 -c 42 -r 1 cp -r ${DATA_DIR} /mnt/bb/${USER}/data
 jsrun -n ${nnodes} -g 6 -c 42 -r 1 -a 1 -b none \
     fairseq-train --distributed-port 23456 \
     /mnt/bb/${USER}/data \
-    --fp16 \
+    --fp16 --memory-efficient-fp16 \
     --user-dir ${BASE_DIR}/go_annotation/ \
     --task="sentence_labeling" \
     --criterion="go_prediction" \
