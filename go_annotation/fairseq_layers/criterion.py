@@ -29,6 +29,7 @@ class GOPredictionCriterion(SentencePredictionCriterion):
             'bp': ont.terms_to_indices(ont.hierarchy_to_terms['biological_process']),
             'mf': ont.terms_to_indices(ont.hierarchy_to_terms['molecular_function']),
             'cc': ont.terms_to_indices(ont.hierarchy_to_terms['cellular_component']),
+            }
 
     # Used to enable mixed precision (see https://pytorch.org/docs/master/amp.html#torch.cuda.amp.autocast)
     @autocast()
