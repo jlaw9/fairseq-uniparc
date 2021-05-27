@@ -67,8 +67,13 @@ class Ontology:
             obo_file = os.path.join(dir_path, 'go-basic.obo.gz')
 
         # this graph is built with the edges pointed downward (i.e., in reverse)
-        self.G = self.create_ontology_graph(
-                obo_file, with_relationships)
+        self.G, self.replaced_terms = self.create_ontology_graph(
+                obo_file, include_part_of=True, with_relationships=with_relationships)
+        # keep track of each term's hierarchy since the go.obo file can include cross-ontology 'part_of' connections
+        self.hierarchy_to_terms = {h: set() for h in head_nodes.keys()}
+        for n, data in self.G.nodes(data=True):
+            self.hierarchy_to_terms[data['namespace']].add(n)  
+        #print({h: len(self.hierarchy_to_terms[h]) for h in head_nodes})
 
         if restrict_terms_file is None:
             self.terms = sorted(set(self.G.nodes))
@@ -98,9 +103,28 @@ class Ontology:
         self.dag_matrix = nx.to_scipy_sparse_matrix(
                 self.G, nodelist=self.terms, weight=None)
 
-    def create_ontology_graph(self, obo_file, with_relationships=False):
+    def map_and_filter_terms(self, terms):
+        """ Map the given terms to primary (rather than alternate or obsolete) terms, 
+        and filter them out if there's no mapping to a primary term
+        """ 
+        new_terms = []
+        terms_skipped = 0 
+        for t in terms:
+            if t in self.replaced_terms:
+                t = self.replaced_terms[t]
+            if not self.G.has_node(t):
+                terms_skipped += 1
+                continue
+            new_terms.append(t)
+        new_terms = set(new_terms)
+        print(f"{len(terms)} mapped to {len(new_terms)} terms ({terms_skipped} terms skipped)")
+        return new_terms
+
+    def create_ontology_graph(self, obo_file, include_part_of=False, with_relationships=False):
 
         G = nx.DiGraph()
+        # keep track of the obsolete and alternate term IDs
+        replaced_terms = {}
 
         print(f"reading obo file: {obo_file}")
         with gzip.open(obo_file, mode='rt') as f:
@@ -112,12 +136,25 @@ class Ontology:
                 data = parse_group(group)
 
                 if ('is_obsolete' in data) or (data['type'] != '[Term]'):
+                    if 'replaced_by' in data:
+                        replaced_terms[data['id']] = data['replaced_by']
                     continue
+
+                if 'alt_id' in data:
+                    data['alt_id'] = [data['alt_id']] if isinstance(data['alt_id'], str) else data['alt_id']
+                    for alt_id in data['alt_id']:
+                        replaced_terms[alt_id] = data['id']
 
                 G.add_node(data['id'], name=data.get('name'), namespace=data.get('namespace'))
 
                 for target in data['is_a']:
                     G.add_edge(target, data['id'], type='is_a')
+
+                if include_part_of:
+                    # UPDATE: also include part_of edges
+                    for type_, target in data['relationship']: 
+                        if type_ == "part_of":
+                            G.add_edge(target, data['id'], type='part_of')
 
                 if with_relationships:
                     for type_, target in data['relationship']:
@@ -126,7 +163,7 @@ class Ontology:
         # each term in the graph will get an index which corresponds to its place in the annotation matrix
         nx.set_node_attributes(G, None, 'index')
 
-        return G
+        return G, replaced_terms
 
     def terms_to_indices(self, terms):
         """ Return a sorted list of indices for the given terms, omitting
@@ -228,6 +265,8 @@ def build_ann_matrix(df, ont_obj, prots=None):
     t_idx_list = []
     terms_missed = []
     for (i, prot, term) in df[['prot', 'term']].itertuples():
+        # make sure to replace obsolete or alternate term IDs
+        term = ont_obj.replaced_terms.get(term, term)
         # for cafa3, the test data has some terms not seen in the training data
         if term not in ont_obj.term_index:
             terms_missed.append(term)

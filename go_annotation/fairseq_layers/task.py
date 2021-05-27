@@ -66,6 +66,9 @@ class SentenceLabelingTask(SentencePredictionTask):
         model.register_classification_head(
             head_name,
             num_classes=self.args.num_classes,
+            # we're running out of GPU RAM for the esm1b model
+            # so try setting a smaller inner_dim
+            inner_dim=128,
         )
 
         if update_bias:
