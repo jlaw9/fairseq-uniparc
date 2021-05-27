@@ -36,12 +36,13 @@ fairseq-train ../../eagle/criterion_development/fairseq_swissprot_debug/ \
   --optimizer adam --adam-betas "(0.9, 0.98)" --adam-eps 1e-06 \
   --clip-norm 0.0 \
   --lr-scheduler polynomial_decay --lr 1e-05 \
-  --arch esm1b_t33 \
-  --max-positions 1024 \
+  --arch esm1_t6 \
+  --max-positions 512 \
   --save-interval 1 \
   --log-format simple --log-interval 1 \
   --fp16 --memory-efficient-fp16 \
   --ddp-backend=legacy_ddp
 
   #--batch-size 2 \
+  #--arch esm1b_t33 \
   #--arch esm1_t6 \
