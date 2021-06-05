@@ -56,7 +56,7 @@ class ESMModel(RobertaModel):
         # try updating the model max_positions
         model.args.max_positions = args.max_positions
         encoder = ESMEncoder(model, dictionary)
-        assert args.max_positions == model.args.max_positions
+        assert args.max_positions <= model.args.max_positions
 
         return cls(args, encoder)
 
