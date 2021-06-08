@@ -68,7 +68,7 @@ class SentenceLabelingTask(SentencePredictionTask):
             num_classes=self.args.num_classes,
             # we're running out of GPU RAM for the esm1b model
             # so try setting a smaller inner_dim
-            inner_dim=128,
+            inner_dim=args.inner_dim,
         )
 
         if update_bias:
