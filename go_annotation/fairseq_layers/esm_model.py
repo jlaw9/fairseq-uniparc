@@ -22,6 +22,12 @@ class ESMModel(RobertaModel):
         parser.add_argument(
             "--esm-architecture", type=str, help="ESM pretrained architecture"
         )
+        # also add an inner_dim argument 
+        # for the esm1b model we trained with a smaller inner_dim (128) to fit in GPU RAM
+        parser.add_argument(
+            "--inner-dim", type=int, default=768,
+            help="Inner dimmension to use for the GO prediction head. Default=768",
+        )
 
     @classmethod
     def build_model(cls, args, task):

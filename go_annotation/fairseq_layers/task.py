@@ -5,7 +5,7 @@ import numpy as np
 from fairseq.data import (
     ConcatSentencesDataset, IdDataset,
     NestedDictionaryDataset, NumSamplesDataset, NumelDataset,
-    PrependTokenDataset,
+    AppendTokenDataset, PrependTokenDataset,
     RawLabelDataset, RightPadDataset,
     RollDataset, SortDataset, data_utils)
 from fairseq.data.shorten_dataset import maybe_shorten_dataset
@@ -68,7 +68,7 @@ class SentenceLabelingTask(SentencePredictionTask):
             num_classes=self.args.num_classes,
             # we're running out of GPU RAM for the esm1b model
             # so try setting a smaller inner_dim
-            inner_dim=128,
+            inner_dim=args.inner_dim,
         )
 
         if update_bias:
@@ -108,8 +108,10 @@ class SentenceLabelingTask(SentencePredictionTask):
         )
         input1 = make_dataset("input1", self.source_dictionary)
 
-        if self.args.init_token is not None:
-            input0 = PrependTokenDataset(input0, self.args.init_token)
+        # for the ESM model, always prepend the BOS token
+        logger.info(f"Prepending the BOS token '{self.source_dictionary.bos()}' and appending the EOS token '{self.source_dictionary.eos()}' to each sequence") 
+        #if self.args.init_token is not None:
+        input0 = PrependTokenDataset(input0, self.source_dictionary.bos())
 
         if input1 is None:
             src_tokens = input0
@@ -130,6 +132,11 @@ class SentenceLabelingTask(SentencePredictionTask):
             self.args.max_positions,
             self.args.seed,
         )
+
+        # after potentially shortening the dataset, 
+        # add the end of sequence token used by the ESM model 
+        # https://github.com/facebookresearch/esm/issues/18#issuecomment-754108485
+        src_tokens = AppendTokenDataset(src_tokens, self.source_dictionary.eos())
 
         dataset = {
             "id": IdDataset(),

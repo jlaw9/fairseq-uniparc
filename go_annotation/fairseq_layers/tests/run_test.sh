@@ -38,6 +38,7 @@ fairseq-train ../../eagle/criterion_development/fairseq_swissprot_debug/ \
   --lr-scheduler polynomial_decay --lr 1e-05 \
   --arch esm1_t6 \
   --max-positions 512 \
+  --inner-dim 768 \
   --save-interval 1 \
   --log-format simple --log-interval 1 \
   --fp16 --memory-efficient-fp16 \
