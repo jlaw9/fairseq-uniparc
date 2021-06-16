@@ -108,10 +108,6 @@ class SentenceLabelingTask(SentencePredictionTask):
         )
         input1 = make_dataset("input1", self.source_dictionary)
 
-        # for the ESM model, always prepend the BOS token
-        logger.info(f"Prepending the BOS token '{self.source_dictionary.bos()}' and appending the EOS token '{self.source_dictionary.eos()}' to each sequence") 
-        #if self.args.init_token is not None:
-        input0 = PrependTokenDataset(input0, self.source_dictionary.bos())
 
         if input1 is None:
             src_tokens = input0
@@ -129,11 +125,17 @@ class SentenceLabelingTask(SentencePredictionTask):
             split,
             self.args.shorten_data_split_list,
             self.args.shorten_method,
-            self.args.max_positions,
+            # because we're adding the BOS and EOS tokens below,
+            # reduce the max positions by 2
+            self.args.max_positions-2,
             self.args.seed,
         )
 
         # after potentially shortening the dataset, 
+        # for the ESM model, always prepend the BOS token
+        logger.info(f"Prepending the BOS token '{self.source_dictionary.bos()}' and appending the EOS token '{self.source_dictionary.eos()}' to each sequence") 
+        #if self.args.init_token is not None:
+        src_tokens = PrependTokenDataset(src_tokens, self.source_dictionary.bos())
         # add the end of sequence token used by the ESM model 
         # https://github.com/facebookresearch/esm/issues/18#issuecomment-754108485
         src_tokens = AppendTokenDataset(src_tokens, self.source_dictionary.eos())
